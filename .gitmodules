@@ -1,0 +1,9 @@
+[submodule "libraries/eigenpro"]
+	path = libraries/eigenpro
+	url = https://github.com/EigenPro/EigenPro-pytorch
+[submodule "libraries/neural_tangents"]
+	path = libraries/neural_tangents
+	url = https://github.com/google/neural-tangents
+[submodule "libraries/wide_resnet"]
+	path = libraries/wide_resnet
+	url = https://github.com/meliketoy/wide-resnet.pytorch/blob/master/networks/wide_resnet.py
