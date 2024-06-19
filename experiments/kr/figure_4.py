@@ -8,6 +8,7 @@ import os
 import json
 from concurrent.futures import ProcessPoolExecutor
 import argparse
+from scipy.spatial.distance import cdist
 
 # Function to load data from a CSV file
 def load_data(directory: str, filename: str) -> np.ndarray:
@@ -21,7 +22,7 @@ def load_data(directory: str, filename: str) -> np.ndarray:
 # Gaussian kernel transformer function
 def gaussian_kernel_transformer(w: float = 1.0) -> FunctionTransformer:
     def kernel(X: np.ndarray) -> np.ndarray:
-        pairwise_sq_dists = np.sum((X[:, np.newaxis, :] - X[np.newaxis, :, :]) ** 2, axis=-1)
+        pairwise_sq_dists = cdist(X, X, 'sqeuclidean')
         return np.exp(-w ** 2 * pairwise_sq_dists)
 
     return FunctionTransformer(kernel, validate=False)
@@ -39,7 +40,7 @@ def kernel_ridge_regression(
     K_train = kernel_transformer.transform(X_train)
     K_train += ridge * np.eye(K_train.shape[0])
     alpha = np.linalg.solve(K_train, y_train)
-    pairwise_sq_dists = np.sum((X_test[:, np.newaxis, :] - X_train[np.newaxis, :, :]) ** 2, axis=-1)
+    pairwise_sq_dists = cdist(X_test, X_train, 'sqeuclidean')
     K_test = np.exp(-w ** 2 * pairwise_sq_dists)
     y_pred = K_test @ alpha
     return y_pred
