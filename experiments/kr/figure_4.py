@@ -9,20 +9,73 @@ import json
 from concurrent.futures import ProcessPoolExecutor
 import argparse
 from scipy.spatial.distance import cdist
+from sklearn.utils.extmath import randomized_svd
 
 # Function to load data from a CSV file
-def load_data(directory: str, filename: str) -> np.ndarray:
+def load_data(directory: str, filename: str, d: int, size: int) -> np.ndarray:
     filepath = os.path.join(directory, filename)
     if not os.path.exists(filepath):
-        raise FileNotFoundError(f"Data file not found at {filepath}")
+        # If the file does not exist, generate and save the data
+        data = generate_data(d, size)
+        make_csv(data, directory, filename)
     data = np.loadtxt(filepath, delimiter=",", skiprows=1)
     return data
 
-# Gaussian kernel transformer function
-def gaussian_kernel_transformer(w: float = 1.0) -> FunctionTransformer:
+# Function to generate data
+def generate_data(d, N):
+    """
+    Generate N uniformly distributed points on the surface of a (d-1)-dimensional unit sphere.
+
+    Parameters:
+    d (int): Dimension of the space (d-1 dimensional sphere).
+    N (int): Number of points to generate.
+
+    Returns:
+    np.ndarray: An array of shape (N, d) containing the Cartesian coordinates of the points.
+    """
+    # Generate d-dimensional zero vector
+    u = np.zeros(d)
+    # Generate dxd - dimensional identity matrix
+    v = np.identity(d)
+
+    np.random.seed(42)
+
+    # Generate N points from a d-dimensional standard normal distribution
+    points = np.random.multivariate_normal(mean=u, cov=v, size=N)
+
+    # Normalize each point to lie on the unit sphere
+    norms = np.linalg.norm(points, axis=1, keepdims=True)
+    S_d = points / norms
+
+    return S_d
+
+# Function to save data to a CSV file
+def make_csv(data, directory, filename):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # Construct the full path
+    filepath = os.path.join(directory, filename)
+
+    # Save the points to a CSV file
+    header = ','.join([f'x{i+1}' for i in range(data.shape[1])])
+    np.savetxt(filepath, data, delimiter=",", header=header, comments="")
+    print(f"Points saved to {filepath}")
+
+# Gaussian kernel transformer with Nyström approximation
+def gaussian_kernel_transformer_nystrom(w: float = 1.0, n_components: int = 100) -> FunctionTransformer:
     def kernel(X: np.ndarray) -> np.ndarray:
-        pairwise_sq_dists = cdist(X, X, 'sqeuclidean')
-        return np.exp(-w ** 2 * pairwise_sq_dists)
+        subset = X[np.random.choice(X.shape[0], n_components, replace=False)]
+        pairwise_sq_dists = cdist(subset, subset, 'sqeuclidean')
+        W = np.exp(-w ** 2 * pairwise_sq_dists)
+        U, S, Vt = randomized_svd(W, n_components=n_components)
+        U = U[:, :n_components]  # truncate to n_components
+        S = np.diag(S[:n_components])
+        pairwise_sq_dists = cdist(X, subset, 'sqeuclidean')
+        K_nystrom = np.exp(-w ** 2 * pairwise_sq_dists)
+        K_approx = K_nystrom @ np.linalg.inv(S) @ U.T
+        return K_approx @ K_nystrom.T
+
     return FunctionTransformer(kernel, validate=False)
 
 # Kernel ridge regression function
@@ -31,9 +84,10 @@ def kernel_ridge_regression(
         y_train: np.ndarray,
         X_test: np.ndarray,
         w: float = 1.0,
-        ridge: float = 0.1
+        ridge: float = 0.1,
+        n_components: int = 100
 ) -> np.ndarray:
-    kernel_transformer = gaussian_kernel_transformer(w=w)
+    kernel_transformer = gaussian_kernel_transformer_nystrom(w=w, n_components=n_components)
     K_train = kernel_transformer.transform(X_train)
     K_train += ridge * np.eye(K_train.shape[0])
     alpha = np.linalg.solve(K_train, y_train)
@@ -43,13 +97,13 @@ def kernel_ridge_regression(
     return y_pred
 
 # Run experiment function
-def run_experiment(d: int, size: int, w: float) -> Tuple[int, float]:
+def run_experiment(d: int, size: int, w: float, n_components: int) -> Tuple[int, float]:
     directory = "./data/synth"
-    X_train = load_data(directory, f"d{d}_N{size}.csv")
+    X_train = load_data(directory, f"d{d}_N{size}.csv", d, size)
     y_train = np.random.normal(0, 1, size)
-    X_test = load_data(directory, f"d{d}_N100.csv")
+    X_test = load_data(directory, f"d{d}_N100.csv", d, 100)
     y_test = np.zeros(100)
-    y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1)
+    y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1, n_components=n_components)
     mse = mean_squared_error(y_test, y_pred)
     return size, mse
 
@@ -57,15 +111,16 @@ def run_experiment(d: int, size: int, w: float) -> Tuple[int, float]:
 def experiment(
         d: int,
         sample_sizes: List[int],
-        num_runs: int = 10,
-        w: float = 1.0
+        num_runs: int = 10,  # Reduced number of runs
+        w: float = 1.0,
+        n_components: int = 100  # Number of components for Nyström approximation
 ) -> Dict[int, List[float]]:
     mse_results = {size: [] for size in sample_sizes}
-    with ProcessPoolExecutor(max_workers=4) as executor:  # Limit number of parallel tasks
+    with ProcessPoolExecutor() as executor:
         futures = []
         for _ in range(num_runs):
             for size in sample_sizes:
-                futures.append(executor.submit(run_experiment, d, size, w))
+                futures.append(executor.submit(run_experiment, d, size, w, n_components))
         for future in tqdm(futures, desc=f"Dimension {d}"):
             size, mse = future.result()
             mse_results[size].append(mse)
@@ -128,8 +183,8 @@ if __name__ == "__main__":
     parser.add_argument('--dimension', type=int, help='Specify the dimension for plotting results.')
     args = parser.parse_args()
 
-    # Further reduced sample sizes
-    sample_sizes = np.logspace(0.7, 2.5, num=20, dtype=int)  # Reduced range
+    # Reduced sample sizes by a factor of 10
+    sample_sizes = np.logspace(0.7, 3, num=50, dtype=int)
     dimensions = [5, 10, 15]
     output_dir = "outputs/figure_4"
 
@@ -137,7 +192,7 @@ if __name__ == "__main__":
         # Run the experiments and store the results
         results: Dict[int, Dict[int, List[float]]] = {}
         for d in dimensions:
-            results[d] = experiment(d, sample_sizes, num_runs=5, w=1.0)  # Further reduced number of runs
+            results[d] = experiment(d, sample_sizes, num_runs=10, w=1.0, n_components=50)  # Reduced number of components
         save_results(results, output_dir)
 
     if args.plot:
