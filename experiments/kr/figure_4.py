@@ -65,12 +65,14 @@ def make_csv(data, directory, filename):
 # Gaussian kernel transformer with Nyström approximation
 def gaussian_kernel_transformer_nystrom(w: float = 1.0, n_components: int = 100) -> FunctionTransformer:
     def kernel(X: np.ndarray) -> np.ndarray:
-        subset = X[np.random.choice(X.shape[0], n_components, replace=False)]
+        # Ensure n_components does not exceed the number of samples
+        n_components_actual = min(n_components, X.shape[0])
+        subset = X[np.random.choice(X.shape[0], n_components_actual, replace=False)]
         pairwise_sq_dists = cdist(subset, subset, 'sqeuclidean')
         W = np.exp(-w ** 2 * pairwise_sq_dists)
-        U, S, Vt = randomized_svd(W, n_components=n_components)
-        U = U[:, :n_components]  # truncate to n_components
-        S = np.diag(S[:n_components])
+        U, S, Vt = randomized_svd(W, n_components=n_components_actual)
+        U = U[:, :n_components_actual]  # truncate to n_components_actual
+        S = np.diag(S[:n_components_actual])
         pairwise_sq_dists = cdist(X, subset, 'sqeuclidean')
         K_nystrom = np.exp(-w ** 2 * pairwise_sq_dists)
         K_approx = K_nystrom @ np.linalg.inv(S) @ U.T
