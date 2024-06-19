@@ -117,7 +117,7 @@ def experiment(
         w: float = 1.0,
         n_components: int = 100  # Number of components for Nyström approximation
 ) -> Dict[int, List[float]]:
-    mse_results = {size: [] for size in sample_sizes}
+    mse_results = {int(size): [] for size in sample_sizes}  # Ensure keys are standard Python integers
     with ProcessPoolExecutor() as executor:
         futures = []
         for _ in range(num_runs):
@@ -125,7 +125,7 @@ def experiment(
                 futures.append(executor.submit(run_experiment, d, size, w, n_components))
         for future in tqdm(futures, desc=f"Dimension {d}"):
             size, mse = future.result()
-            mse_results[size].append(mse)
+            mse_results[int(size)].append(mse)  # Ensure keys are standard Python integers
     return mse_results
 
 # Save results function
@@ -133,20 +133,22 @@ def save_results(results: Dict[int, List[float]], output_dir: str, dimension: in
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     output_file_path = os.path.join(output_dir, f"results_d{dimension}.json")
-    with open(output_file_path, 'w') as output_file:
-        json.dump(results, output_file)
+    try:
+        with open(output_file_path, 'w') as output_file:
+            json.dump(results, output_file)
+        print(f"Results saved to {output_file_path}")
+    except TypeError as e:
+        print(f"Error saving results: {e}")
 
 # Load results function with error handling
-def load_results(input_dir: str, dimensions: List[int]) -> Dict[int, Dict[int, List[float]]]:
+def load_results(input_dir: str, dimension: int) -> Dict[int, List[float]]:
     results = {}
-    for d in dimensions:
-        input_file_path = os.path.join(input_dir, f"results_d{d}.json")
-        try:
-            with open(input_file_path, 'r') as input_file:
-                results[d] = json.load(input_file)
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            print(f"Error loading {input_file_path}: {e}")
-            results[d] = {}
+    input_file_path = os.path.join(input_dir, f"results_d{dimension}.json")
+    try:
+        with open(input_file_path, 'r') as input_file:
+            results = json.load(input_file)
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"Error loading {input_file_path}: {e}")
     return results
 
 # Plot results function
@@ -155,13 +157,17 @@ def plot_results(
         sample_sizes: List[int],
         dimension: int
 ) -> None:
+    if not results:
+        print(f"No results to plot for dimension {dimension}.")
+        return
+
     plt.figure(figsize=(10, 6))
     if not os.path.exists("results/fig_4/graphs"):
         os.makedirs("results/fig_4/graphs")
 
-    means = [np.mean(results[size]) for size in sample_sizes]
-    quantiles_25 = [np.quantile(results[size], 0.25) for size in sample_sizes]
-    quantiles_75 = [np.quantile(results[size], 0.75) for size in sample_sizes]
+    means = [np.mean(results.get(size, [np.nan])) for size in sample_sizes]
+    quantiles_25 = [np.quantile(results.get(size, [np.nan]), 0.25) for size in sample_sizes]
+    quantiles_75 = [np.quantile(results.get(size, [np.nan]), 0.75) for size in sample_sizes]
 
     plt.plot(sample_sizes, means, label=f'd={dimension}')
     plt.fill_between(sample_sizes, quantiles_25, quantiles_75, alpha=0.2)
@@ -204,5 +210,5 @@ if __name__ == "__main__":
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --plot.")
         # Load the results and plot them for the specified dimension
-        results = load_results(output_dir, [args.dimension])
-        plot_results(results[args.dimension], sample_sizes, args.dimension)
+        results = load_results(output_dir, args.dimension)
+        plot_results(results, sample_sizes, args.dimension)
