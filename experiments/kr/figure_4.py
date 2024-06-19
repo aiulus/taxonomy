@@ -129,21 +129,24 @@ def experiment(
     return mse_results
 
 # Save results function
-def save_results(results: Dict[int, Dict[int, List[float]]], output_dir: str) -> None:
+def save_results(results: Dict[int, List[float]], output_dir: str, dimension: int) -> None:
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    for d, mse_results in results.items():
-        output_file_path = os.path.join(output_dir, f"results_d{d}.json")
-        with open(output_file_path, 'w') as output_file:
-            json.dump(mse_results, output_file)
+    output_file_path = os.path.join(output_dir, f"results_d{dimension}.json")
+    with open(output_file_path, 'w') as output_file:
+        json.dump(results, output_file)
 
-# Load results function
+# Load results function with error handling
 def load_results(input_dir: str, dimensions: List[int]) -> Dict[int, Dict[int, List[float]]]:
     results = {}
     for d in dimensions:
         input_file_path = os.path.join(input_dir, f"results_d{d}.json")
-        with open(input_file_path, 'r') as input_file:
-            results[d] = json.load(input_file)
+        try:
+            with open(input_file_path, 'r') as input_file:
+                results[d] = json.load(input_file)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error loading {input_file_path}: {e}")
+            results[d] = {}
     return results
 
 # Plot results function
@@ -182,7 +185,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run experiments and generate plots for kernel ridge regression.')
     parser.add_argument('--mse', action='store_true', help='Generate and store MSE results.')
     parser.add_argument('--plot', action='store_true', help='Generate plots from stored MSE results.')
-    parser.add_argument('--dimension', type=int, help='Specify the dimension for plotting results.')
+    parser.add_argument('--dimension', type=int, help='Specify the dimension for generating or plotting results.')
     args = parser.parse_args()
 
     # Reduced sample sizes by a factor of 10
@@ -191,11 +194,11 @@ if __name__ == "__main__":
     output_dir = "outputs/figure_4"
 
     if args.mse:
-        # Run the experiments and store the results
-        results: Dict[int, Dict[int, List[float]]] = {}
-        for d in dimensions:
-            results[d] = experiment(d, sample_sizes, num_runs=10, w=1.0, n_components=50)  # Reduced number of components
-        save_results(results, output_dir)
+        if args.dimension is None:
+            raise ValueError("Please specify a dimension using --dimension when using --mse.")
+        # Run the experiment and store the results for the specified dimension
+        result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0, n_components=50)  # Reduced number of components
+        save_results(result, output_dir, args.dimension)
 
     if args.plot:
         if args.dimension is None:
