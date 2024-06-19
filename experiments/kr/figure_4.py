@@ -18,15 +18,12 @@ def load_data(directory: str, filename: str) -> np.ndarray:
     data = np.loadtxt(filepath, delimiter=",", skiprows=1)
     return data
 
-
 # Gaussian kernel transformer function
 def gaussian_kernel_transformer(w: float = 1.0) -> FunctionTransformer:
     def kernel(X: np.ndarray) -> np.ndarray:
         pairwise_sq_dists = cdist(X, X, 'sqeuclidean')
         return np.exp(-w ** 2 * pairwise_sq_dists)
-
     return FunctionTransformer(kernel, validate=False)
-
 
 # Kernel ridge regression function
 def kernel_ridge_regression(
@@ -45,7 +42,6 @@ def kernel_ridge_regression(
     y_pred = K_test @ alpha
     return y_pred
 
-
 # Run experiment function
 def run_experiment(d: int, size: int, w: float) -> Tuple[int, float]:
     directory = "./data/synth"
@@ -57,16 +53,15 @@ def run_experiment(d: int, size: int, w: float) -> Tuple[int, float]:
     mse = mean_squared_error(y_test, y_pred)
     return size, mse
 
-
 # Experiment function
 def experiment(
         d: int,
         sample_sizes: List[int],
-        num_runs: int = 100,
+        num_runs: int = 10,
         w: float = 1.0
 ) -> Dict[int, List[float]]:
     mse_results = {size: [] for size in sample_sizes}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=4) as executor:  # Limit number of parallel tasks
         futures = []
         for _ in range(num_runs):
             for size in sample_sizes:
@@ -75,7 +70,6 @@ def experiment(
             size, mse = future.result()
             mse_results[size].append(mse)
     return mse_results
-
 
 # Save results function
 def save_results(results: Dict[int, Dict[int, List[float]]], output_dir: str) -> None:
@@ -86,7 +80,6 @@ def save_results(results: Dict[int, Dict[int, List[float]]], output_dir: str) ->
         with open(output_file_path, 'w') as output_file:
             json.dump(mse_results, output_file)
 
-
 # Load results function
 def load_results(input_dir: str, dimensions: List[int]) -> Dict[int, Dict[int, List[float]]]:
     results = {}
@@ -95,7 +88,6 @@ def load_results(input_dir: str, dimensions: List[int]) -> Dict[int, Dict[int, L
         with open(input_file_path, 'r') as input_file:
             results[d] = json.load(input_file)
     return results
-
 
 # Plot results function
 def plot_results(
@@ -128,7 +120,6 @@ def plot_results(
     plt.savefig(plot_file_path)
     plt.close()
 
-
 # Main execution
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run experiments and generate plots for kernel ridge regression.')
@@ -137,7 +128,8 @@ if __name__ == "__main__":
     parser.add_argument('--dimension', type=int, help='Specify the dimension for plotting results.')
     args = parser.parse_args()
 
-    sample_sizes = np.logspace(0.7, 4, num=50, dtype=int)
+    # Further reduced sample sizes
+    sample_sizes = np.logspace(0.7, 2.5, num=20, dtype=int)  # Reduced range
     dimensions = [5, 10, 15]
     output_dir = "outputs/figure_4"
 
@@ -145,7 +137,7 @@ if __name__ == "__main__":
         # Run the experiments and store the results
         results: Dict[int, Dict[int, List[float]]] = {}
         for d in dimensions:
-            results[d] = experiment(d, sample_sizes, num_runs=100, w=1.0)
+            results[d] = experiment(d, sample_sizes, num_runs=5, w=1.0)  # Further reduced number of runs
         save_results(results, output_dir)
 
     if args.plot:
