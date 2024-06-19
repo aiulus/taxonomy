@@ -48,18 +48,17 @@ def make_csv(data, directory, filename):
     print(f"Points saved to {filepath}")
 
 def generate_f4(output_dir):
-    dimensions = [5, 10, 15]
     sample_sizes = np.logspace(0.7, 4, num=50, dtype=int)
+    dimensions = [5, 10, 15]
 
+    # Generate and save the data
     for d in dimensions:
         for size in sample_sizes:
-            data_train = generate_data(d, size)
-            file_train = f"train_synt_d{d}_n{size}.csv"
-            make_csv(data_train, output_dir, file_train)
-        # Also generate the fixed test set size
-        data_test = generate_data(d, 100)
-        file_test = f"test_synt_d{d}_n{100}.csv"
-        make_csv(data_test, output_dir, file_test)
+            data = generate_data(d, size)
+            make_csv(data, "./data/synth", f"d{d}_N{size}.csv")
+        # Generate a fixed test set of 100 points
+        data = generate_data(d, 100)
+        make_csv(data, "./data/synth", f"d{d}_N100.csv")
 
 
 

@@ -107,15 +107,6 @@ if __name__ == "__main__":
     sample_sizes = np.logspace(0.7, 4, num=50, dtype=int)
     dimensions = [5, 10, 15]
 
-    # Generate and save the data
-    for d in dimensions:
-        for size in sample_sizes:
-            data = generate_data(d, size)
-            make_csv(data, "./data/synth", f"d{d}_N{size}.csv")
-        # Generate a fixed test set of 100 points
-        data = generate_data(d, 100)
-        make_csv(data, "./data/synth", f"d{d}_N100.csv")
-
     # Run the experiments and plot the results
     results: Dict[int, Dict[int, List[float]]] = {}
     for d in dimensions:
