@@ -8,16 +8,19 @@ import torch
 import torchvision.datasets as datasets
 from torchvision.transforms import ToTensor, Lambda
 
+import numpy as np
+import os
+
 def generate_data(d, N):
     """
-        Generate N uniformly distributed points on the surface of a (d-1)-dimensional unit sphere.
+    Generate N uniformly distributed points on the surface of a (d-1)-dimensional unit sphere.
 
-        Parameters:
-        d (int): Dimension of the space (d-1 dimensional sphere).
-        N (int): Number of points to generate.
+    Parameters:
+    d (int): Dimension of the space (d-1 dimensional sphere).
+    N (int): Number of points to generate.
 
-        Returns:
-        np.ndarray: An array of shape (N, d) containing the Cartesian coordinates of the points.
+    Returns:
+    np.ndarray: An array of shape (N, d) containing the Cartesian coordinates of the points.
     """
     # Generate d-dimensional zero vector
     u = np.zeros(d)
@@ -48,7 +51,8 @@ def make_csv(data, directory, filename):
     print(f"Points saved to {filepath}")
 
 def generate_f4(output_dir):
-    sample_sizes = np.logspace(0.7, 4, num=50, dtype=int)
+    # Adjust sample sizes to match the downsized experiment parameters
+    sample_sizes = np.logspace(0.7, 3, num=50, dtype=int)
     dimensions = [5, 10, 15]
 
     # Generate and save the data
@@ -59,6 +63,10 @@ def generate_f4(output_dir):
         # Generate a fixed test set of 100 points
         data = generate_data(d, 100)
         make_csv(data, "./data/synth", f"d{d}_N100.csv")
+
+# Execute the data generation
+output_dir = "./data/synth"
+generate_f4(output_dir)
 
 
 
