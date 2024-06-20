@@ -196,5 +196,9 @@ if __name__ == "__main__":
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --plot.")
         # Load the results and plot them for the specified dimension
+<<<<<<< HEAD
         results = load_results(output_dir, args.dimension)
+=======
+        results = load_results(output_dir_mse, args.dimension)
+>>>>>>> Pushing new data and graphs for Figure 4 (dim. 5)
         plot_results(results, sample_sizes, args.dimension)
