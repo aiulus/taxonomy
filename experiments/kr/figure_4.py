@@ -9,7 +9,6 @@ import json
 from concurrent.futures import ProcessPoolExecutor
 import argparse
 from scipy.spatial.distance import cdist
-from sklearn.utils.extmath import randomized_svd
 
 # Function to load data from a CSV file
 def load_data(directory: str, filename: str, d: int, size: int) -> np.ndarray:
@@ -63,23 +62,11 @@ def make_csv(data, directory, filename):
     np.savetxt(filepath, data, delimiter=",", header=header, comments="")
     print(f"Points saved to {filepath}")  # Debug statement
 
-# Gaussian kernel transformer with Nyström approximation
-def gaussian_kernel_transformer_nystrom(w: float = 1.0, n_components: int = 100) -> FunctionTransformer:
-    def kernel(X: np.ndarray) -> np.ndarray:
-        # Ensure n_components does not exceed the number of samples
-        n_components_actual = min(n_components, X.shape[0])
-        subset = X[np.random.choice(X.shape[0], n_components_actual, replace=False)]
-        pairwise_sq_dists = cdist(subset, subset, 'sqeuclidean')
-        W = np.exp(-w ** 2 * pairwise_sq_dists)
-        U, S, Vt = randomized_svd(W, n_components=n_components_actual)
-        U = U[:, :n_components_actual]  # truncate to n_components_actual
-        S = np.diag(S[:n_components_actual])
-        pairwise_sq_dists = cdist(X, subset, 'sqeuclidean')
-        K_nystrom = np.exp(-w ** 2 * pairwise_sq_dists)
-        K_approx = K_nystrom @ np.linalg.inv(S) @ U.T
-        return K_approx @ K_nystrom.T
-
-    return FunctionTransformer(kernel, validate=False)
+# Gaussian kernel function
+def gaussian_kernel(X: np.ndarray, Y: np.ndarray, w: float = 1.0) -> np.ndarray:
+    pairwise_sq_dists = cdist(X, Y, 'sqeuclidean')
+    K = np.exp(-w ** 2 * pairwise_sq_dists)
+    return K
 
 # Kernel ridge regression function
 def kernel_ridge_regression(
@@ -87,58 +74,41 @@ def kernel_ridge_regression(
         y_train: np.ndarray,
         X_test: np.ndarray,
         w: float = 1.0,
-        ridge: float = 0.1,
-        n_components: int = 100
+        ridge: float = 0.1
 ) -> np.ndarray:
-    kernel_transformer = gaussian_kernel_transformer_nystrom(w=w, n_components=n_components)
-    K_train = kernel_transformer.transform(X_train)
+    K_train = gaussian_kernel(X_train, X_train, w=w)
     K_train += ridge * np.eye(K_train.shape[0])
     alpha = np.linalg.solve(K_train, y_train)
-    pairwise_sq_dists = cdist(X_test, X_train, 'sqeuclidean')
-    K_test = np.exp(-w ** 2 * pairwise_sq_dists)
+    K_test = gaussian_kernel(X_test, X_train, w=w)
     y_pred = K_test @ alpha
     return y_pred
 
-# Run experiment function with MSE normalization
-def run_experiment(d: int, size: int, w: float, n_components: int, min_mse: float, max_mse: float) -> Tuple[int, float]:
+# Run experiment function
+def run_experiment(d: int, size: int, w: float) -> Tuple[int, float]:
     directory = "./data/synth"
     X_train = load_data(directory, f"d{d}_N{size}.csv", d, size)
     y_train = np.random.normal(0, 1, size)
     X_test = load_data(directory, f"d{d}_N100.csv", d, 100)
     y_test = np.zeros(100)
-    y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1, n_components=n_components)
+    y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1)
     mse = mean_squared_error(y_test, y_pred)
     print(f"Run experiment with size {size}: MSE = {mse}")  # Debug statement
-    normalized_mse = (mse - min_mse) / (max_mse - min_mse) if max_mse > min_mse else 0
-    return size, normalized_mse
+    return size, mse
 
 # Experiment function
 def experiment(
         d: int,
         sample_sizes: List[int],
         num_runs: int = 10,  # Reduced number of runs
-        w: float = 1.0,
-        n_components: int = 100  # Number of components for Nyström approximation
+        w: float = 1.0
 ) -> Dict[int, List[float]]:
     mse_results = {int(size): [] for size in sample_sizes}  # Ensure keys are standard Python integers
-    all_mses = []
 
-    # First pass to collect all MSEs to determine min and max
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(run_experiment, d, size, w, n_components, 0, 1) for size in sample_sizes for _ in range(num_runs)]
+        futures = [executor.submit(run_experiment, d, size, w) for size in sample_sizes for _ in range(num_runs)]
         for future in tqdm(futures, desc=f"Dimension {d}"):
-            _, mse = future.result()
-            all_mses.append(mse)
-
-    min_mse, max_mse = min(all_mses), max(all_mses)
-    print(f"Min MSE: {min_mse}, Max MSE: {max_mse}")  # Debug statement
-
-    # Second pass to normalize MSEs
-    with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(run_experiment, d, size, w, n_components, min_mse, max_mse) for size in sample_sizes for _ in range(num_runs)]
-        for future in tqdm(futures, desc=f"Dimension {d} (Normalized)"):
-            size, normalized_mse = future.result()
-            mse_results[int(size)].append(normalized_mse)
+            size, mse = future.result()
+            mse_results[int(size)].append(mse)
 
     print(f"Experiment results for dimension {d}: {mse_results}")  # Debug statement
     return mse_results
@@ -185,9 +155,13 @@ def plot_results(
     quantiles_25 = [np.quantile(results.get(size, [np.nan]), 0.25) for size in sample_sizes]
     quantiles_75 = [np.quantile(results.get(size, [np.nan]), 0.75) for size in sample_sizes]
 
+    min_mse = min(min(result) for result in results.values() if result)
+    max_mse = max(max(result) for result in results.values() if result)
+
     print(f"Means: {means}")  # Debug statement
     print(f"25th Quantiles: {quantiles_25}")  # Debug statement
     print(f"75th Quantiles: {quantiles_75}")  # Debug statement
+    print(f"Min MSE: {min_mse}, Max MSE: {max_mse}")  # Debug statement
 
     plt.plot(sample_sizes, means, label=f'd={dimension}')
     plt.fill_between(sample_sizes, quantiles_25, quantiles_75, alpha=0.2)
@@ -198,7 +172,8 @@ def plot_results(
     plt.ylabel('Test MSE')
     plt.title(f'Ridged Gaussian Kernel for Dimension {dimension}')
     plt.xticks([10, 100, 1000, 10000], labels=['10', '100', '1000', '10000'])
-    plt.yticks([1, 0.1, 0.01, 0.001], labels=['$10^0$', '$10^{-1}$', '$10^{-2}$', '$10^{-3}$'])
+    plt.yticks([10**i for i in range(int(np.floor(np.log10(min_mse))), int(np.ceil(np.log10(max_mse))) + 1)],
+               labels=[f'$10^{{{i}}}$' for i in range(int(np.floor(np.log10(min_mse))), int(np.ceil(np.log10(max_mse))) + 1)])
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.legend()
 
@@ -219,18 +194,19 @@ if __name__ == "__main__":
 
     sample_sizes = np.logspace(0.7, 3, num=50, dtype=int)
     dimensions = [5, 10, 15]
-    output_dir = "outputs/figure_4"
+    output_dir_mse = "results/fig_4/metrics"
+    output_dir_plot = "results/fig_4/graphs"
 
     if args.mse:
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --mse.")
         # Run the experiment and store the results for the specified dimension
-        result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0, n_components=50)
-        save_results(result, output_dir, args.dimension)
+        result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0)
+        save_results(result, output_dir_mse, args.dimension)
 
     if args.plot:
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --plot.")
         # Load the results and plot them for the specified dimension
-        results = load_results(output_dir, args.dimension)
+        results = load_results(output_dir_plot, args.dimension)
         plot_results(results, sample_sizes, args.dimension)
