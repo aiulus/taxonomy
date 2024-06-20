@@ -138,26 +138,28 @@ def load_results(input_dir: str, dimension: int) -> Dict[int, List[float]]:
     return results
 
 # Plot results function
-def plot_results(
-        results: Dict[int, List[float]],
-        sample_sizes: List[int],
-        dimension: int
-) -> None:
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_results(results: Dict[int, float], dimension: int) -> None:
     if not results:
         print(f"No results to plot for dimension {dimension}.")
         return
 
+    # Sort the results by sample size
+    sorted_sample_sizes = sorted(results.keys())
+    sorted_mse = [results[size] for size in sorted_sample_sizes]
+
     plt.figure(figsize=(10, 6))
 
-    means = [np.mean(results[size]) for size in sample_sizes if size in results]
-
-    plt.plot(sample_sizes, means, label=f'd={dimension}')
+    plt.plot(sorted_sample_sizes, sorted_mse, marker='o', label=f'd={dimension}')
 
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel('Sample Sizes')
-    plt.ylabel('Test MSE')
-    plt.title(f'Ridged Gaussian Kernel for Dimension {dimension}')
+    plt.ylabel('Mean Test MSE')
+    plt.title(f'Kernel Ridge Regression MSE for Dimension {dimension}')
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.legend()
 
