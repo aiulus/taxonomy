@@ -19,6 +19,7 @@ def load_data(directory: str, filename: str, d: int, size: int) -> np.ndarray:
         data = generate_data(d, size)
         make_csv(data, directory, filename)
     data = np.loadtxt(filepath, delimiter=",", skiprows=1)
+    print(f"Loaded data from {filepath}: {data.shape}")  # Debug statement
     return data
 
 # Function to generate data
@@ -60,7 +61,7 @@ def make_csv(data, directory, filename):
     # Save the points to a CSV file
     header = ','.join([f'x{i+1}' for i in range(data.shape[1])])
     np.savetxt(filepath, data, delimiter=",", header=header, comments="")
-    print(f"Points saved to {filepath}")
+    print(f"Points saved to {filepath}")  # Debug statement
 
 # Gaussian kernel transformer with Nyström approximation
 def gaussian_kernel_transformer_nystrom(w: float = 1.0, n_components: int = 100) -> FunctionTransformer:
@@ -107,6 +108,7 @@ def run_experiment(d: int, size: int, w: float, n_components: int) -> Tuple[int,
     y_test = np.zeros(100)
     y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1, n_components=n_components)
     mse = mean_squared_error(y_test, y_pred)
+    print(f"Run experiment with size {size}: MSE = {mse}")  # Debug statement
     return size, mse
 
 # Experiment function
@@ -136,7 +138,7 @@ def save_results(results: Dict[int, List[float]], output_dir: str, dimension: in
     try:
         with open(output_file_path, 'w') as output_file:
             json.dump(results, output_file)
-        print(f"Results saved to {output_file_path}")
+        print(f"Results saved to {output_file_path}")  # Debug statement
     except TypeError as e:
         print(f"Error saving results: {e}")
 
@@ -169,6 +171,7 @@ def plot_results(
     quantiles_25 = [np.quantile(results.get(size, [np.nan]), 0.25) for size in sample_sizes]
     quantiles_75 = [np.quantile(results.get(size, [np.nan]), 0.75) for size in sample_sizes]
 
+    print(f"Plotting results for dimension {dimension}")  # Debug statement
     plt.plot(sample_sizes, means, label=f'd={dimension}')
     plt.fill_between(sample_sizes, quantiles_25, quantiles_75, alpha=0.2)
 
@@ -185,6 +188,7 @@ def plot_results(
     plot_file_path = os.path.join("results/fig_4/graphs", f"fig_4_d{dimension}.png")
     plt.savefig(plot_file_path)
     plt.close()
+    print(f"Plot saved to {plot_file_path}")  # Debug statement
 
 # Main execution
 if __name__ == "__main__":
@@ -194,7 +198,8 @@ if __name__ == "__main__":
     parser.add_argument('--dimension', type=int, help='Specify the dimension for generating or plotting results.')
     args = parser.parse_args()
 
-    # Reduced sample sizes by a factor of 10
+    print(f"Arguments: {args}")  # Debug statement
+
     sample_sizes = np.logspace(0.7, 3, num=50, dtype=int)
     dimensions = [5, 10, 15]
     output_dir = "outputs/figure_4"
@@ -203,7 +208,7 @@ if __name__ == "__main__":
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --mse.")
         # Run the experiment and store the results for the specified dimension
-        result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0, n_components=50)  # Reduced number of components
+        result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0, n_components=50)
         save_results(result, output_dir, args.dimension)
 
     if args.plot:
