@@ -99,8 +99,8 @@ def kernel_ridge_regression(
     y_pred = K_test @ alpha
     return y_pred
 
-# Run experiment function
-def run_experiment(d: int, size: int, w: float, n_components: int) -> Tuple[int, float]:
+# Run experiment function with MSE normalization
+def run_experiment(d: int, size: int, w: float, n_components: int, min_mse: float, max_mse: float) -> Tuple[int, float]:
     directory = "./data/synth"
     X_train = load_data(directory, f"d{d}_N{size}.csv", d, size)
     y_train = np.random.normal(0, 1, size)
@@ -109,7 +109,8 @@ def run_experiment(d: int, size: int, w: float, n_components: int) -> Tuple[int,
     y_pred = kernel_ridge_regression(X_train, y_train, X_test, w=w, ridge=0.1, n_components=n_components)
     mse = mean_squared_error(y_test, y_pred)
     print(f"Run experiment with size {size}: MSE = {mse}")  # Debug statement
-    return size, mse
+    normalized_mse = (mse - min_mse) / (max_mse - min_mse) if max_mse > min_mse else 0
+    return size, normalized_mse
 
 # Experiment function
 def experiment(
@@ -120,14 +121,26 @@ def experiment(
         n_components: int = 100  # Number of components for Nyström approximation
 ) -> Dict[int, List[float]]:
     mse_results = {int(size): [] for size in sample_sizes}  # Ensure keys are standard Python integers
+    all_mses = []
+
+    # First pass to collect all MSEs to determine min and max
     with ProcessPoolExecutor() as executor:
-        futures = []
-        for _ in range(num_runs):
-            for size in sample_sizes:
-                futures.append(executor.submit(run_experiment, d, size, w, n_components))
+        futures = [executor.submit(run_experiment, d, size, w, n_components, 0, 1) for size in sample_sizes for _ in range(num_runs)]
         for future in tqdm(futures, desc=f"Dimension {d}"):
-            size, mse = future.result()
-            mse_results[int(size)].append(mse)  # Ensure keys are standard Python integers
+            _, mse = future.result()
+            all_mses.append(mse)
+
+    min_mse, max_mse = min(all_mses), max(all_mses)
+    print(f"Min MSE: {min_mse}, Max MSE: {max_mse}")  # Debug statement
+
+    # Second pass to normalize MSEs
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(run_experiment, d, size, w, n_components, min_mse, max_mse) for size in sample_sizes for _ in range(num_runs)]
+        for future in tqdm(futures, desc=f"Dimension {d} (Normalized)"):
+            size, normalized_mse = future.result()
+            mse_results[int(size)].append(normalized_mse)
+
+    print(f"Experiment results for dimension {d}: {mse_results}")  # Debug statement
     return mse_results
 
 # Save results function
@@ -149,6 +162,7 @@ def load_results(input_dir: str, dimension: int) -> Dict[int, List[float]]:
     try:
         with open(input_file_path, 'r') as input_file:
             results = json.load(input_file)
+        print(f"Loaded results from {input_file_path}: {results}")  # Debug statement
     except (json.JSONDecodeError, FileNotFoundError) as e:
         print(f"Error loading {input_file_path}: {e}")
     return results
@@ -171,7 +185,10 @@ def plot_results(
     quantiles_25 = [np.quantile(results.get(size, [np.nan]), 0.25) for size in sample_sizes]
     quantiles_75 = [np.quantile(results.get(size, [np.nan]), 0.75) for size in sample_sizes]
 
-    print(f"Plotting results for dimension {dimension}")  # Debug statement
+    print(f"Means: {means}")  # Debug statement
+    print(f"25th Quantiles: {quantiles_25}")  # Debug statement
+    print(f"75th Quantiles: {quantiles_75}")  # Debug statement
+
     plt.plot(sample_sizes, means, label=f'd={dimension}')
     plt.fill_between(sample_sizes, quantiles_25, quantiles_75, alpha=0.2)
 
