@@ -148,39 +148,26 @@ def plot_results(
         return
 
     plt.figure(figsize=(10, 6))
-    if not os.path.exists("results/fig_4/graphs"):
-        os.makedirs("results/fig_4/graphs")
 
-    means = [np.mean(results.get(size, [np.nan])) for size in sample_sizes]
-    quantiles_25 = [np.quantile(results.get(size, [np.nan]), 0.25) for size in sample_sizes]
-    quantiles_75 = [np.quantile(results.get(size, [np.nan]), 0.75) for size in sample_sizes]
-
-    min_mse = min(min(result) for result in results.values() if result)
-    max_mse = max(max(result) for result in results.values() if result)
-
-    print(f"Means: {means}")  # Debug statement
-    print(f"25th Quantiles: {quantiles_25}")  # Debug statement
-    print(f"75th Quantiles: {quantiles_75}")  # Debug statement
-    print(f"Min MSE: {min_mse}, Max MSE: {max_mse}")  # Debug statement
+    means = [np.mean(results[size]) for size in sample_sizes if size in results]
 
     plt.plot(sample_sizes, means, label=f'd={dimension}')
-    plt.fill_between(sample_sizes, quantiles_25, quantiles_75, alpha=0.2)
 
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel('Sample Sizes')
     plt.ylabel('Test MSE')
     plt.title(f'Ridged Gaussian Kernel for Dimension {dimension}')
-    plt.xticks([10, 100, 1000, 10000], labels=['10', '100', '1000', '10000'])
-    plt.yticks([10**i for i in range(int(np.floor(np.log10(min_mse))), int(np.ceil(np.log10(max_mse))) + 1)],
-               labels=[f'$10^{{{i}}}$' for i in range(int(np.floor(np.log10(min_mse))), int(np.ceil(np.log10(max_mse))) + 1)])
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.legend()
 
+    if not os.path.exists("results/fig_4/graphs"):
+        os.makedirs("results/fig_4/graphs")
     plot_file_path = os.path.join("results/fig_4/graphs", f"fig_4_d{dimension}.png")
     plt.savefig(plot_file_path)
     plt.close()
     print(f"Plot saved to {plot_file_path}")  # Debug statement
+
 
 # Main execution
 if __name__ == "__main__":
@@ -194,19 +181,18 @@ if __name__ == "__main__":
 
     sample_sizes = np.logspace(0.7, 3, num=50, dtype=int)
     dimensions = [5, 10, 15]
-    output_dir_mse = "results/fig_4/metrics"
-    output_dir_plot = "results/fig_4/graphs"
+    output_dir = "results/fig_4/metrics"
 
     if args.mse:
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --mse.")
         # Run the experiment and store the results for the specified dimension
         result = experiment(args.dimension, sample_sizes, num_runs=10, w=1.0)
-        save_results(result, output_dir_mse, args.dimension)
+        save_results(result, output_dir, args.dimension)
 
     if args.plot:
         if args.dimension is None:
             raise ValueError("Please specify a dimension using --dimension when using --plot.")
         # Load the results and plot them for the specified dimension
-        results = load_results(output_dir_plot, args.dimension)
+        results = load_results(output_dir, args.dimension)
         plot_results(results, sample_sizes, args.dimension)
